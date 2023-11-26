@@ -10,9 +10,8 @@ const stripe = require('stripe')(process.env.PAYMENT_SECRET_KEY)
 
 // middleware
 const corsOptions = {
-    origin: ['http://localhost:5173', 'http://localhost:5174'],
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'https://diagnostic-center-1ba53.web.app'],
     credentials: true,
-    optionSuccessStatus: 200,
 }
 app.use(cors(corsOptions))
 app.use(express.json())
@@ -49,6 +48,10 @@ async function run() {
         // Connect the client to the server	(optional starting in v4.7)
         // await client.connect();
         const usersCollection = client.db('diagonsticCenter').collection('users')
+        const bannersCollection = client.db('diagonsticCenter').collection('banners')
+        const testsCollection = client.db('diagonsticCenter').collection('tests')
+        const districtsCollection = client.db('diagonsticCenter').collection('districts')
+        const upazillasCollection = client.db('diagonsticCenter').collection('upazillas')
 
 
 
@@ -62,7 +65,7 @@ async function run() {
                 .cookie('token', token, {
                     httpOnly: true,
                     secure: false,
-                    //    sameSite: 'none'
+                    // sameSite: 'none'
                 })
                 .send({ success: true })
         })
@@ -85,10 +88,10 @@ async function run() {
         app.put('/users/:email', async (req, res) => {
             const email = req.params.email
             const user = req.body
+            console.log(user)
             const query = { email: email }
             const options = { upsert: true }
             const isExist = await usersCollection.findOne(query)
-            console.log('User found?----->', isExist)
             if (isExist) {
                 if (user?.status === 'Requested') {
                     const result = await usersCollection.updateOne(
@@ -106,14 +109,102 @@ async function run() {
             const result = await usersCollection.updateOne(
                 query,
                 {
-                    $set: { ...user, timestamp: Date.now() },
+                    $set: { ...user },
                 },
                 options
             )
             res.send(result)
         })
+        //get all users
+        app.get('/users', async (req, res) => {
+            const result = await usersCollection.find().toArray();
+            res.send(result);
+        })
+        //get single user
+        app.get('/users/:email', async (req, res) => {
+            const email = req.params.email;
+            let query = {}
+            if (email) {
+                query.email = email
+            }
+            const result = await usersCollection.findOne(query);
+            res.send(result);
+        })
+        //update user info
+        app.put('/users/update/:id', async (req, res) => {
+            const id = req.params.id;
+            const user = req.body;
+            const query = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    name: user?.name,
+                    blood: user?.blood,
+                    district: user?.district,
+                    upazilla: user?.upazilla
+                }
+            }
+            const result = await usersCollection.updateOne(query, updatedDoc);
+            res.send(result);
+        })
+
+        //update user status 
+        app.patch('/user/status/:id', async (req, res) => {
+            const id = req.params.id;
+            const status = req.body.status
+            console.log('id', id)
+            console.log('stt', status);
+            const filter = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    status: status,
+                }
+            }
+            const result = await usersCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        })
 
 
+
+        //upload banner image
+        app.post('/banners', async (req, res) => {
+            const banner = req.body;
+            const result = await bannersCollection.insertOne(banner);
+            res.send(result);
+        })
+        //update isActive value;
+        app.patch('/banners/:id', async (req, res) => {
+            const id = req.params.id;
+            const status = req.body.isActive;
+            const filter = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    isActive: status,
+                }
+            }
+            const result = await bannersCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        })
+
+
+        //add test 
+        app.post('/tests', async (req, res) => {
+            const test = req.body;
+            const result = await testsCollection.insertOne(test);
+            res.send(result);
+        })
+
+
+        app.get('/banners', async (req, res) => {
+            const result = await bannersCollection.find().toArray();
+            res.send(result);
+        })
+
+        //get the all districts 
+        app.get('/location', async (req, res) => {
+            const upazillas = await upazillasCollection.find().toArray()
+            const districts = await districtsCollection.find().toArray();
+            res.send({ upazillas, districts });
+        })
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
