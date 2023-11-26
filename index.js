@@ -135,6 +135,7 @@ async function run() {
             const id = req.params.id;
             const user = req.body;
             const query = { _id: new ObjectId(id) };
+            const options = { upsert: true };
             const updatedDoc = {
                 $set: {
                     name: user?.name,
@@ -143,7 +144,7 @@ async function run() {
                     upazilla: user?.upazilla
                 }
             }
-            const result = await usersCollection.updateOne(query, updatedDoc);
+            const result = await usersCollection.updateOne(query, updatedDoc, options);
             res.send(result);
         })
 
@@ -151,12 +152,24 @@ async function run() {
         app.patch('/user/status/:id', async (req, res) => {
             const id = req.params.id;
             const status = req.body.status
-            console.log('id', id)
-            console.log('stt', status);
             const filter = { _id: new ObjectId(id) };
             const updatedDoc = {
                 $set: {
                     status: status,
+                }
+            }
+            const result = await usersCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        })
+
+        //update user role
+        app.patch('/user/role/:id', async (req, res) => {
+            const id = req.params.id;
+            const role = req.body.role;
+            const filter = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    role: role,
                 }
             }
             const result = await usersCollection.updateOne(filter, updatedDoc);
@@ -175,6 +188,16 @@ async function run() {
         app.patch('/banners/:id', async (req, res) => {
             const id = req.params.id;
             const status = req.body.isActive;
+            const deactivateOtherBannersFilter = {
+                _id: { $ne: new ObjectId(id) } // Exclude the banner being updated
+            };
+            const deactivateOtherBannersUpdate = {
+                $set: {
+                    isActive: false
+                }
+            };
+            await bannersCollection.updateMany(deactivateOtherBannersFilter, deactivateOtherBannersUpdate);
+
             const filter = { _id: new ObjectId(id) };
             const updatedDoc = {
                 $set: {
@@ -185,6 +208,10 @@ async function run() {
             res.send(result);
         })
 
+        app.get('/banners', async (req, res) => {
+            const result = await bannersCollection.find().toArray();
+            res.send(result);
+        })
 
         //add test 
         app.post('/tests', async (req, res) => {
@@ -193,11 +220,54 @@ async function run() {
             res.send(result);
         })
 
-
-        app.get('/banners', async (req, res) => {
-            const result = await bannersCollection.find().toArray();
+        //get all test
+        app.get('/tests', async (req, res) => {
+            const result = await testsCollection.find().toArray();
             res.send(result);
         })
+
+        //delete a single test
+        app.delete('/tests/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+                const query = { _id: new ObjectId(id) };
+                const result = await testsCollection.deleteOne(query);
+                res.send(result)
+            } catch (error) {
+                res.send({ message: error.message })
+            }
+        })
+
+        //get single test details 
+        app.get('/tests/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await testsCollection.findOne(query);
+            res.send(result);
+        })
+
+        //update a single test data 
+        app.put('/test/update/:id', async (req, res) => {
+            const id = req.params.id;
+            const test = req.body;
+            const filter = { _id: new ObjectId(id) };
+            const options = { upsert: true };
+            const updatedDoc = {
+                $set: {
+                    title: test.title,
+                    image: test?.image,
+                    details: test?.details,
+                    date: test?.date,
+                    price: test?.price,
+                    slots: test?.slots
+                }
+            }
+
+            const result = await testsCollection.updateOne(filter, updatedDoc, options);
+            res.send(result)
+        })
+
+
 
         //get the all districts 
         app.get('/location', async (req, res) => {
