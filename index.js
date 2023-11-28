@@ -6,9 +6,9 @@ const cookieParser = require('cookie-parser')
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 const jwt = require('jsonwebtoken')
 const port = process.env.PORT || 5000;
-const stripe = require('stripe')(process.env.PAYMENT_SECRET_KEY)
+const stripe = require('stripe')(process.env.STRIPE_SK);
 
-// middleware
+// middleware 
 const corsOptions = {
     origin: ['http://localhost:5173', 'http://localhost:5174', 'https://diagnostic-center-1ba53.web.app'],
     credentials: true,
@@ -19,13 +19,11 @@ app.use(cookieParser())
 
 const verifyToken = async (req, res, next) => {
     const token = req.cookies?.token
-    console.log(token)
     if (!token) {
         return res.status(401).send({ message: 'unauthorized access' })
     }
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
-            console.log(err)
             return res.status(401).send({ message: 'unauthorized access' })
         }
         req.user = decoded
@@ -50,9 +48,20 @@ async function run() {
         const usersCollection = client.db('diagonsticCenter').collection('users')
         const bannersCollection = client.db('diagonsticCenter').collection('banners')
         const testsCollection = client.db('diagonsticCenter').collection('tests')
+        const appointmentsCollection = client.db('diagonsticCenter').collection('appointments')
         const districtsCollection = client.db('diagonsticCenter').collection('districts')
         const upazillasCollection = client.db('diagonsticCenter').collection('upazillas')
 
+
+        //verify admin
+        const verifyAdmin = async (req, res, next) => {
+            const user = req.user
+            const query = { email: user?.email }
+            const result = await usersCollection.findOne(query)
+            if (!result || result?.role !== 'admin')
+                return res.status(401).send({ message: 'unauthorized access' })
+            next()
+        }
 
 
         //auth related api call
@@ -64,7 +73,7 @@ async function run() {
             res
                 .cookie('token', token, {
                     httpOnly: true,
-                    secure: false,
+                    secure: true,
                     // sameSite: 'none'
                 })
                 .send({ success: true })
@@ -116,7 +125,7 @@ async function run() {
             res.send(result)
         })
         //get all users
-        app.get('/users', async (req, res) => {
+        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
             const result = await usersCollection.find().toArray();
             res.send(result);
         })
@@ -131,7 +140,7 @@ async function run() {
             res.send(result);
         })
         //update user info
-        app.put('/users/update/:id', async (req, res) => {
+        app.put('/users/update/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const user = req.body;
             const query = { _id: new ObjectId(id) };
@@ -149,7 +158,7 @@ async function run() {
         })
 
         //update user status 
-        app.patch('/user/status/:id', async (req, res) => {
+        app.patch('/user/status/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const status = req.body.status
             const filter = { _id: new ObjectId(id) };
@@ -163,7 +172,7 @@ async function run() {
         })
 
         //update user role
-        app.patch('/user/role/:id', async (req, res) => {
+        app.patch('/user/role/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const role = req.body.role;
             const filter = { _id: new ObjectId(id) };
@@ -179,13 +188,13 @@ async function run() {
 
 
         //upload banner image
-        app.post('/banners', async (req, res) => {
+        app.post('/banners', verifyToken, verifyAdmin, async (req, res) => {
             const banner = req.body;
             const result = await bannersCollection.insertOne(banner);
             res.send(result);
         })
         //update isActive value;
-        app.patch('/banners/:id', async (req, res) => {
+        app.patch('/banners/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const status = req.body.isActive;
             const deactivateOtherBannersFilter = {
@@ -214,7 +223,7 @@ async function run() {
         })
 
         //add test 
-        app.post('/tests', async (req, res) => {
+        app.post('/tests', verifyToken, verifyAdmin, async (req, res) => {
             const test = req.body;
             const result = await testsCollection.insertOne(test);
             res.send(result);
@@ -222,12 +231,20 @@ async function run() {
 
         //get all test
         app.get('/tests', async (req, res) => {
-            const result = await testsCollection.find().toArray();
-            res.send(result);
+            try {
+                const sortObj = req.query.sort;
+                const sortField = { booked: sortObj }
+                console.log(sortObj)
+                const result = await testsCollection.find().sort(sortField).toArray();
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send('Internal Server Error');
+            }
         })
 
         //delete a single test
-        app.delete('/tests/:id', async (req, res) => {
+        app.delete('/tests/:id', verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const id = req.params.id;
                 const query = { _id: new ObjectId(id) };
@@ -247,34 +264,101 @@ async function run() {
         })
 
         //update a single test data 
-        app.put('/test/update/:id', async (req, res) => {
-            const id = req.params.id;
-            const test = req.body;
-            const filter = { _id: new ObjectId(id) };
-            const options = { upsert: true };
-            const updatedDoc = {
-                $set: {
-                    title: test.title,
-                    image: test?.image,
-                    details: test?.details,
-                    date: test?.date,
-                    price: test?.price,
-                    slots: test?.slots
+        app.put('/test/update/:id', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const id = req.params.id;
+                const test = req.body;
+                const filter = { _id: new ObjectId(id) };
+                const options = { upsert: true };
+                const updatedDoc = {
+                    $set: {
+                        title: test.title,
+                        image: test?.image,
+                        details: test?.details,
+                        date: test?.date,
+                        price: test?.price,
+                        slots: test?.slots
+                    }
                 }
+                const result = await testsCollection.updateOne(filter, updatedDoc, options);
+                res.send(result)
+            } catch (error) {
+                res.send({ message: error.message })
+            }
+        })
+
+        //create payment intent
+        app.post('/create-payment-intent', verifyToken, async (req, res) => {
+            try {
+                const { price } = req.body
+                const amount = parseInt(price * 100)
+                if (!price || amount < 1) return
+                const { client_secret } = await stripe.paymentIntents.create({
+                    amount: amount,
+                    currency: 'usd',
+                    payment_method_types: ['card'],
+                })
+                res.send({ clientSecret: client_secret })
+            } catch (error) {
+                res.send({ message: error.message })
+            }
+        })
+        //save test booking in db
+        app.post('/appointments', async (req, res) => {
+            const appoinment = req.body;
+            const result = await appointmentsCollection.insertOne(appoinment);
+            res.send(result);
+        })
+
+        //update rooms booking status;
+        app.patch('/test/slots/:id', verifyToken, async (req, res) => {
+            try {
+                const id = req.params.id;
+                const filter = { _id: new ObjectId(id) };
+                const result = await testsCollection.updateOne(
+                    filter,
+                    { $inc: { slots: -1, booked: 1 } }
+                );
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: 'Internal Server Error' });
             }
 
-            const result = await testsCollection.updateOne(filter, updatedDoc, options);
+        })
+
+        //get appointment info for specific user
+        app.get('/appointments/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { 'user.email': email };
+            const result = await appointmentsCollection.find(query).toArray();
             res.send(result)
         })
 
+        //cancel appointnments
+        app.delete('/appointments/delete/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await appointmentsCollection.deleteOne(query);
+            res.send(result)
+        })
+
+        //finde reservation
+        app.get('/reservation/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { testId: id };
+            const result = await appointmentsCollection.find(query).toArray();
+            res.send(result);
+
+        })
 
 
-        //get the all districts 
+        //get the all districts and upazillas 
         app.get('/location', async (req, res) => {
             const upazillas = await upazillasCollection.find().toArray()
             const districts = await districtsCollection.find().toArray();
             res.send({ upazillas, districts });
         })
+
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
