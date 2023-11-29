@@ -74,7 +74,7 @@ async function run() {
                 .cookie('token', token, {
                     httpOnly: true,
                     secure: true,
-                    // sameSite: 'none'
+                    sameSite: 'none'
                 })
                 .send({ success: true })
         })
@@ -234,7 +234,6 @@ async function run() {
             try {
                 const sortObj = req.query.sort;
                 const sortField = { booked: sortObj }
-                console.log(sortObj)
                 const result = await testsCollection.find().sort(sortField).toArray();
                 res.send(result);
             } catch (error) {
@@ -342,13 +341,33 @@ async function run() {
             res.send(result)
         })
 
-        //finde reservation
+        //find reservation
         app.get('/reservation/:id', async (req, res) => {
             const id = req.params.id;
-            const query = { testId: id };
+            const filter = req.query;
+
+            const query = {
+                testId: id,
+                'user.email': { $regex: filter.search, $options: 'i' }
+            };
             const result = await appointmentsCollection.find(query).toArray();
             res.send(result);
 
+        })
+
+        //update test status 
+        app.patch('/reservation/result/:id', async (req, res) => {
+            const id = req.params.id;
+            const testResult = req.body.testResult;
+            const query = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    status: 'delivered',
+                    testResult
+                }
+            };
+            const result = await appointmentsCollection.updateOne(query, updatedDoc);
+            res.send(result);
         })
 
 
