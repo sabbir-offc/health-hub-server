@@ -51,6 +51,7 @@ async function run() {
         const appointmentsCollection = client.db('diagonsticCenter').collection('appointments')
         const districtsCollection = client.db('diagonsticCenter').collection('districts')
         const upazillasCollection = client.db('diagonsticCenter').collection('upazillas')
+        const recommendationsCollection = client.db('diagonsticCenter').collection('recommendations')
 
 
         //verify admin
@@ -216,9 +217,17 @@ async function run() {
             const result = await bannersCollection.updateOne(filter, updatedDoc);
             res.send(result);
         })
-
+        //get all banners
         app.get('/banners', async (req, res) => {
             const result = await bannersCollection.find().toArray();
+            res.send(result);
+        })
+
+        //delete banenr
+        app.delete('/banners/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await bannersCollection.deleteOne(query);
             res.send(result);
         })
 
@@ -232,10 +241,13 @@ async function run() {
         //get all test
         app.get('/tests', async (req, res) => {
             try {
+                const page = req.query?.page;
+                const size = parseInt(req.query?.size);
                 const sortObj = req.query.sort;
                 const sortField = { booked: sortObj }
-                const result = await testsCollection.find().sort(sortField).toArray();
-                res.send(result);
+                const count = await testsCollection.estimatedDocumentCount()
+                const result = await testsCollection.find().skip(page * size).limit(size).sort(sortField).toArray();
+                res.send({ result, count });
             } catch (error) {
                 console.error(error);
                 res.status(500).send('Internal Server Error');
@@ -378,6 +390,12 @@ async function run() {
             res.send({ upazillas, districts });
         })
 
+
+        //get all health recommandetaions
+        app.get('/recommendations', async (req, res) => {
+            const result = await recommendationsCollection.find().toArray();
+            res.send(result);
+        })
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
