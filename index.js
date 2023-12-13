@@ -391,12 +391,36 @@ async function run() {
         })
 
 
+
         //get all health recommandetaions
         app.get('/recommendations', async (req, res) => {
             const result = await recommendationsCollection.find().toArray();
             res.send(result);
         })
+        //generate prescriptions:
+        function generatePrescription(patientData) {
+            const { patientName, doctorName, medication, dosage, email, ill } = patientData;
+            console.log(patientData)
+            const prescriptionContent = {
+                patientName: patientName,
+                doctorName: doctorName,
+                medication: medication,
+                dosage,
+                ill,
+                patientEmail: email,
+            };
+            return prescriptionContent;
+        }
 
+        app.post('/generate', (req, res) => {
+            try {
+                const prescription = generatePrescription(req.body);
+                res.send(prescription);
+            } catch (error) {
+                console.error('Error generating prescription:', error);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
